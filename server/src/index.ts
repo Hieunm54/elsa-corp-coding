@@ -4,12 +4,14 @@ import { config } from "./config";
 import { logger } from "./logger";
 import redis from "./redis/client";
 import { setupSocket } from "./socket";
+import { startLeaderboardBroadcaster, stopLeaderboardBroadcaster } from "./services/leaderboard";
 
 async function start() {
   await redis.connect();
 
   const httpServer = http.createServer(app);
-  setupSocket(httpServer);
+  const io = setupSocket(httpServer);
+  startLeaderboardBroadcaster(io);
 
   httpServer.listen(config.port, () => {
     logger.info({ port: config.port, env: config.nodeEnv }, "Server started");
@@ -17,6 +19,7 @@ async function start() {
 
   const shutdown = () => {
     logger.info("Shutting down...");
+    stopLeaderboardBroadcaster();
     httpServer.close(async () => {
       await redis.quit();
       process.exit(0);

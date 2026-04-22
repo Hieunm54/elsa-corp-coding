@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { findQuiz } from "../seed/quizzes";
-import { joinQuiz } from "../services/quiz";
+import { joinQuiz, startQuiz, nextQuestion } from "../services/quiz";
+import { getIo } from "../socket";
 
 const router = Router();
 
@@ -37,6 +38,46 @@ router.post("/:quizId/join", async (req: Request, res: Response) => {
       return;
     }
     if (err instanceof Error && err.message === "Quiz is not active") {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/:quizId/start", async (req: Request, res: Response) => {
+  try {
+    const question = await startQuiz(req.params.quizId);
+    getIo().to(`quizzes:${req.params.quizId}`).emit("question", question);
+    res.json({ started: true, question });
+  } catch (err) {
+    if (err instanceof Error && err.message === "Quiz not found") {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof Error && err.message === "Quiz is not active") {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/:quizId/next-question", async (req: Request, res: Response) => {
+  try {
+    const question = await nextQuestion(req.params.quizId);
+    getIo().to(`quizzes:${req.params.quizId}`).emit("question", question);
+    res.json({ question });
+  } catch (err) {
+    if (err instanceof Error && err.message === "Quiz not found") {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof Error && err.message === "Quiz not started") {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    if (err instanceof Error && err.message === "No more questions") {
       res.status(400).json({ error: err.message });
       return;
     }

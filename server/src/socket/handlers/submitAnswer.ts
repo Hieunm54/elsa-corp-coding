@@ -4,6 +4,7 @@ import { keys } from "../../redis/keys";
 import { logger } from "../../logger";
 import { SocketData } from "../types";
 import { findQuiz } from "../../seed/quizzes";
+import { markDirty } from "../../services/leaderboard";
 
 export function registerSubmitAnswerHandler(
   io: Server,
@@ -65,6 +66,8 @@ export function registerSubmitAnswerHandler(
 
     const totalScoreRaw = await redis.zscore(keys.leaderboard(quizId), participantId);
     const totalScore = totalScoreRaw ? Math.round(parseFloat(totalScoreRaw)) : 0;
+
+    markDirty(quizId);
 
     socket.emit("answer_result", { isCorrect, pointsEarned, totalScore });
 

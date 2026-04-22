@@ -2,7 +2,6 @@ import { v4 as uuidv4 } from "uuid";
 import redis from "../redis/client";
 import { keys } from "../redis/keys";
 import { findQuiz } from "../seed/quizzes";
-
 const SESSION_TTL_SEC = 60 * 60 * 24; // 24h
 
 export async function joinQuiz(quizId: string, username: string) {
@@ -22,4 +21,44 @@ export async function joinQuiz(quizId: string, username: string) {
   await redis.hset(keys.participants(quizId), participantId, username);
 
   return { token, participantId };
+}
+
+export async function startQuiz(quizId: string) {
+  const quiz = findQuiz(quizId);
+  if (!quiz) throw new Error("Quiz not found");
+  if (quiz.status !== "active") throw new Error("Quiz is not active");
+
+  return setQuestion(quizId, 0);
+}
+
+export async function nextQuestion(quizId: string) {
+  const quiz = findQuiz(quizId);
+  if (!quiz) throw new Error("Quiz not found");
+
+  const raw = await redis.hget(keys.quizState(quizId), "currentQuestionIndex");
+  if (raw === null) throw new Error("Quiz not started");
+
+  const nextIndex = parseInt(raw, 10) + 1;
+  if (nextIndex >= quiz.questions.length) throw new Error("No more questions");
+
+  return setQuestion(quizId, nextIndex);
+}
+
+async function setQuestion(quizId: string, index: number) {
+  const quiz = findQuiz(quizId)!;
+  const question = quiz.questions[index];
+
+  await Promise.all([
+    redis.hset(keys.quizState(quizId), "currentQuestionIndex", String(index)),
+    redis.set(keys.questionStartedAt(quizId, question.id), String(Date.now())),
+  ]);
+
+  return {
+    id: question.id,
+    text: question.text,
+    options: question.options,
+    timeLimitSec: question.timeLimitSec,
+    questionNumber: index + 1,
+    totalQuestions: quiz.questions.length,
+  };
 }
