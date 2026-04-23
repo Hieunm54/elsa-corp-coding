@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from "uuid";
 import redis from "../redis/client";
 import { keys } from "../redis/keys";
 import { findQuiz } from "../seed/quizzes";
-import { getLeaderboardEntries } from "./leaderboard";
+import { getLeaderboardEntries, markDirty } from "./leaderboard";
 
 const SESSION_TTL_SEC = 60 * 60 * 24; // 24h
 
@@ -57,6 +57,16 @@ export async function nextQuestion(
   if (currentIndex < 0 || quiz.questions[currentIndex]?.id !== fromQuestionId) {
     return { status: "already_advanced" };
   }
+
+  const participants = await redis.hgetall(keys.participants(quizId));
+  if (participants && Object.keys(participants).length > 0) {
+    await Promise.all(
+      Object.keys(participants).map((pid) =>
+        redis.zadd(keys.leaderboard(quizId), "NX", 0, pid),
+      ),
+    );
+  }
+  markDirty(quizId);
 
   const nextIndex = currentIndex + 1;
 

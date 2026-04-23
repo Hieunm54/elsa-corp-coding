@@ -7,10 +7,17 @@ vi.mock("../redis/client", () => ({
     hget: vi.fn(),
     zrevrange: vi.fn().mockResolvedValue([]),
     hgetall: vi.fn().mockResolvedValue({}),
+    zadd: vi.fn().mockResolvedValue(1),
   },
 }));
 
+vi.mock("./leaderboard", () => ({
+  markDirty: vi.fn(),
+  getLeaderboardEntries: vi.fn().mockResolvedValue([]),
+}));
+
 import redis from "../redis/client";
+import { markDirty } from "./leaderboard";
 import { joinQuiz, startQuiz, nextQuestion } from "./quiz";
 
 
@@ -97,5 +104,26 @@ describe("nextQuestion", () => {
   it("throws when quiz not started", async () => {
     vi.mocked(redis.hget).mockResolvedValue(null);
     await expect(nextQuestion("quiz-001", "q1")).rejects.toThrow("Quiz not started");
+  });
+
+  it("marks leaderboard dirty and adds unanswered participants with 0", async () => {
+    vi.mocked(redis.hget).mockResolvedValue("0");
+    vi.mocked(redis.hgetall).mockResolvedValue({ "pid-1": "alice", "pid-2": "bob" });
+
+    await nextQuestion("quiz-001", "q1");
+
+    expect(vi.mocked(redis.zadd)).toHaveBeenCalledWith(
+      expect.stringContaining("leaderboard"),
+      "NX",
+      0,
+      "pid-1",
+    );
+    expect(vi.mocked(redis.zadd)).toHaveBeenCalledWith(
+      expect.stringContaining("leaderboard"),
+      "NX",
+      0,
+      "pid-2",
+    );
+    expect(vi.mocked(markDirty)).toHaveBeenCalledWith("quiz-001");
   });
 });
