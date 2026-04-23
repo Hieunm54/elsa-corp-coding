@@ -24,7 +24,7 @@
                                       │         │                                   │
                                       │         ▼                                   │
                                       │  ┌──────────────┐                          │
-                                      │  │  PostgreSQL  │                          │
+                                      │  │              │                          │
                                       │  │  quiz data   │                          │
                                       │  │  questions   │                          │
                                       │  └──────────────┘                          │
@@ -50,7 +50,7 @@
           └───────────┬───────────┘
                       ▼
                ┌─────────────┐
-               │  PostgreSQL │
+               │  Mock data  │
                └─────────────┘
 ```
 
@@ -60,24 +60,24 @@ The **Socket.IO Redis Adapter** is the key enabler: room broadcasts are forwarde
 
 ## 2. Component Descriptions
 
-| Component | Role |
-|-----------|------|
-| **React Client** | Join quiz, display questions, submit answers, show live leaderboard |
-| **REST API** | Register participant, return session token, serve quiz metadata |
-| **Socket.IO Handler** | Authenticate socket, receive answers, broadcast leaderboard |
-| **Scoring Service** | Validate answers, compute time-based points, update Redis |
-| **Leaderboard Service** | Debounced read from Redis sorted set, broadcast to room |
-| **Redis** | Live state store: scores, session tokens, answered tracking, question timestamps |
-| **PostgreSQL** | Static data: quiz definitions, questions, correct answers |
+| Component               | Role                                                                             |
+| ----------------------- | -------------------------------------------------------------------------------- |
+| **React Client**        | Join quiz, display questions, submit answers, show live leaderboard              |
+| **REST API**            | Register participant, return session token, serve quiz metadata                  |
+| **Socket.IO Handler**   | Authenticate socket, receive answers, broadcast leaderboard                      |
+| **Scoring Service**     | Validate answers, compute time-based points, update Redis                        |
+| **Leaderboard Service** | Debounced read from Redis sorted set, broadcast to room                          |
+| **Redis**               | Live state store: scores, session tokens, answered tracking, question timestamps |
 
 ---
 
 ## 3. Data Flow
 
 ### Join
+
 ```
 Client  → POST /quizzes/:quizId/join  { username }
-Server  → validate quizId exists in PostgreSQL
+Server  → validate quizId exists in DB ( mock file for now )
         → generate session token
         → SET session:{token} { participantId, quizId, username }  TTL=24h
         → HSET quizzes:{quizId}:participants  participantId username
@@ -85,6 +85,7 @@ Server  → validate quizId exists in PostgreSQL
 ```
 
 ### Connect & Authenticate
+
 ```
 Client  → WS connect → emit authenticate { token }
 Server  → GET session:{token} → validate
@@ -94,13 +95,15 @@ Server  → GET session:{token} → validate
 ```
 
 ### Question Broadcast (host triggers / auto-advance)
+
 ```
-Server  → fetch question from PostgreSQL
+Server  → fetch question from DB ( mock data )
         → SET quizzes:{quizId}:question:{qId}:startedAt  <epoch ms>
         → broadcast question { id, text, options, timeLimit } to room
 ```
 
 ### Answer Submit
+
 ```
 Client  → emit submit_answer { questionId, answer }
 Server  → SISMEMBER quizzes:{quizId}:answered:{qId} participantId
@@ -108,7 +111,6 @@ Server  → SISMEMBER quizzes:{quizId}:answered:{qId} participantId
         → GET quizzes:{quizId}:question:{qId}:startedAt
         → timeRemaining = timeLimit - (now - startedAt) / 1000
             → if <= 0: emit answer_result { tooLate: true, pointsEarned: 0 }
-        → validate answer vs PostgreSQL
         → points = isCorrect ? basePoints + floor(bonusPoints × timeRemaining/timeLimit) : 0
         → SADD quizzes:{quizId}:answered:{qId}  participantId
         → ZINCRBY quizzes:{quizId}:leaderboard  points  participantId
@@ -117,6 +119,7 @@ Server  → SISMEMBER quizzes:{quizId}:answered:{qId} participantId
 ```
 
 ### Leaderboard Broadcast (debounced 500ms)
+
 ```
 Server  → ZREVRANGE quizzes:{quizId}:leaderboard 0 -1 WITHSCORES
         → HGETALL quizzes:{quizId}:participants  (enrich with usernames)
@@ -126,17 +129,8 @@ Server  → ZREVRANGE quizzes:{quizId}:leaderboard 0 -1 WITHSCORES
 
 ---
 
-## 4. Data Models
-
-### PostgreSQL
-```sql
-quizzes    (id, title, status)
-questions  (id, quiz_id, text, options JSONB, correct_answer,
-            base_points, bonus_points, time_limit_sec, order_num)
-```
-Quiz and question data are seeded at startup — no admin UI.
-
 ### Redis Keys
+
 ```
 session:{token}                          Hash    TTL=24h
   → { participantId, quizId, username }
@@ -161,13 +155,16 @@ quizzes:{quizId}:question:{qId}:startedAt  String (epoch ms)
 ## 5. API & Socket Contract
 
 ### REST
+
 ```
 POST /quizzes/:quizId/join   { username }  → { token, participantId }
 GET  /quizzes/:quizId                      → { id, title, status, questionCount }
+
 GET  /health                               → { status: "ok" }
 ```
 
 ### Socket.IO Events
+
 **Client → Server**
 | Event | Payload |
 |-------|---------|
@@ -204,51 +201,59 @@ Example (timeLimit=30s, basePoints=100, bonusPoints=50):
 
 ## 7. Technologies & Justification
 
-| Layer | Choice | Reason |
-|-------|--------|--------|
-| Runtime | Node.js + TypeScript | Async I/O fits WebSocket workload; TS adds type safety |
-| Framework | Express | Minimal, well-understood, easy to extend |
-| Real-time | Socket.IO | Room management, auto-reconnect, Redis adapter for multi-node |
-| Leaderboard | Redis Sorted Set | `ZINCRBY` / `ZREVRANGE` are atomic and O(log N) |
-| Session store | Redis Hash + TTL | Fast reads, automatic expiry |
-| Database | PostgreSQL | Relational fit for quiz/question structure; JSONB for options |
-| Client | React + TypeScript | Component model suits real-time UI updates |
+| Layer         | Choice               | Reason                                                        |
+| ------------- | -------------------- | ------------------------------------------------------------- |
+| Runtime       | Node.js + TypeScript | Async I/O fits WebSocket workload; TS adds type safety        |
+| Framework     | Express              | Minimal, well-understood, easy to extend                      |
+| Real-time     | Socket.IO            | Room management, auto-reconnect, Redis adapter for multi-node |
+| Leaderboard   | Redis Sorted Set     | `ZINCRBY` / `ZREVRANGE` are atomic and O(log N)               |
+| Session store | Redis Hash + TTL     | Fast reads, automatic expiry                                  |
+| Client        | React + TypeScript   | Component model suits real-time UI updates                    |
 
 ---
 
 ## 8. Non-Functional Requirements
 
 ### Scalability
-- **Stateless servers** + Redis as shared state → add nodes behind a load balancer freely
-- **Socket.IO Redis Adapter** handles cross-node room broadcasts via pub/sub
+
+#### Scaling read
+
+This design is based heavily on redis without a real DB. so I will propose scaling read for redis only.
+
+- **Read replicas**: redis supports primary-replica. the leaderboard boardcaster is the highest-frequency read, so we can offload it to a replica to reduce load on the primary
+  !!! replica introduce lag, but it is still acceptable with leaderboard
+
+- **Horizontal scaling**: shards across multiple nodes using consistent hashing using with quizz id. Each quiz's data (quizzes:quiz-001:\*) lands on one shard determined by the hash slot of the key prefix. now we can support more concurrent quizzes without draining our redis
 - **Redis Sorted Sets** handle concurrent `ZINCRBY` atomically — no race conditions on scoring
 - **Trade-off**: Redis becomes a critical dependency; mitigated with Redis Sentinel or Redis Cluster for HA
 
+#### Scaling write
+
+1. **Vertical scaling**: the easiest and most straightforward solution. It can buy time but not a long-term fix due to hardware limitation
+
+2. **Sharding by quiz ID**: each quiz's keys land on one shard based on the key hash. It solves the multiple quizzes competing problem
+
+3. **Burst join pattern**: when a popular quiz is opened, all users join within seconds, we can introduce load balancer to distribute requests
+
 ### Performance
+
 - Debounced leaderboard broadcast (500ms) caps broadcast frequency under high answer throughput
-- Questions cached in Redis on first load — DB reads only for answer validation
-- PostgreSQL connection pooling (pg-pool) avoids connection overhead
 - `ZREVRANGE` is O(log N + M) — sub-millisecond for typical leaderboard sizes
 
 ### Reliability
+
 - Redis TTLs auto-cleanup orphaned sessions
 - Duplicate answer prevention via Redis Set (`SADD` is idempotent)
-- Late answer detection server-side — client clock skew cannot affect scoring
-- On server restart: active session state survives in Redis; reconnecting clients re-authenticate via token
-- **Trade-off**: In-flight answer at crash time may be lost — acceptable for quiz context
+- **Trade-off**: In-flight answer at crash time may be lost but it is acceptable for quiz context
 
 ### Maintainability
+
 - Layered structure: `routes → services → redis/db` — each layer has one concern
 - TypeScript interfaces for all socket payloads and Redis value shapes
-- Seed script for mock quiz data — no manual DB setup
 
 ### Monitoring & Observability
+
 - Structured JSON logging via `pino` (request id, quiz id, participant id on every log line)
-- Key metrics to expose (Prometheus-compatible):
-  - `active_connections` — gauge
-  - `answers_submitted_total` — counter
-  - `leaderboard_broadcasts_total` — counter
-  - `redis_op_duration_ms` — histogram
 - `GET /health` endpoint for load balancer and uptime checks
 
 ---
@@ -263,7 +268,6 @@ Example (timeLimit=30s, basePoints=100, bonusPoints=50):
 │       ├── socket/         (Socket.IO event handlers)
 │       ├── services/       (scoring, leaderboard, quiz logic)
 │       ├── redis/          (client + key helpers)
-│       ├── db/             (pg pool + queries)
 │       └── seed/           (mock quiz data)
 └── client/
     └── src/
