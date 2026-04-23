@@ -2,9 +2,10 @@ interface Props {
   title: string
   username: string
   count: number
+  onStart: () => void
 }
 
-export default function WaitingRoom({ title, username, count }: Props) {
+export default function WaitingRoom({ title, username, count, onStart }: Props) {
   return (
     <div className="full-page">
       <div className="waiting-card card">
@@ -21,9 +22,13 @@ export default function WaitingRoom({ title, username, count }: Props) {
           </span>
         </div>
 
-        <p className="text-sm text-muted" style={{ marginTop: 20 }}>
+        <p className="text-sm text-muted" style={{ marginTop: 20, marginBottom: 28 }}>
           You joined as <strong style={{ color: 'var(--text)' }}>{username}</strong>
         </p>
+
+        <button className="btn btn-primary" onClick={onStart}>
+          Start Quiz
+        </button>
       </div>
     </div>
   )

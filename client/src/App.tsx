@@ -10,6 +10,7 @@ const SERVER_URL = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:3000'
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('join')
+  const [quizId, setQuizId] = useState('')
   const [quizTitle, setQuizTitle] = useState('')
   const [username, setUsername] = useState('')
   const [participantCount, setParticipantCount] = useState(1)
@@ -21,6 +22,8 @@ export default function App() {
   const [joinError, setJoinError] = useState('')
 
   const socketRef = useRef<Socket | null>(null)
+  // Tracks which questionId we already called next-question for (prevents double-advance)
+  const advancedRef = useRef<string | null>(null)
 
   const connectSocket = useCallback((token: string) => {
     const socket = io(SERVER_URL, { transports: ['websocket', 'polling'] })
@@ -42,6 +45,7 @@ export default function App() {
       setCurrentQuestion(q)
       setAnswerResult(null)
       setSelectedAnswer(null)
+      advancedRef.current = null
       setScreen('playing')
     })
 
@@ -54,8 +58,8 @@ export default function App() {
       setLeaderboard(entries)
     })
 
-    socket.on('quiz_ended', ({ finalLeaderboard }: { finalLeaderboard: LeaderboardEntry[] }) => {
-      setLeaderboard(finalLeaderboard)
+    socket.on('quiz_ended', (payload: { finalLeaderboard?: LeaderboardEntry[] }) => {
+      if (payload?.finalLeaderboard) setLeaderboard(payload.finalLeaderboard)
       setScreen('ended')
     })
 
@@ -64,18 +68,19 @@ export default function App() {
     })
   }, [])
 
-  const handleJoin = useCallback(async (quizId: string, user: string) => {
+  const handleJoin = useCallback(async (id: string, user: string) => {
     setJoinError('')
     try {
-      const quizRes = await fetch(`${SERVER_URL}/quizzes/${quizId}`)
+      const quizRes = await fetch(`${SERVER_URL}/quizzes/${id}`)
       if (!quizRes.ok) {
         const body = await quizRes.json().catch(() => ({})) as { error?: string }
         throw new Error(body.error ?? 'Quiz not found')
       }
       const quiz = await quizRes.json() as { title: string }
       setQuizTitle(quiz.title)
+      setQuizId(id)
 
-      const joinRes = await fetch(`${SERVER_URL}/quizzes/${quizId}/join`, {
+      const joinRes = await fetch(`${SERVER_URL}/quizzes/${id}/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: user }),
@@ -92,6 +97,20 @@ export default function App() {
     }
   }, [connectSocket])
 
+  const handleStartQuiz = useCallback(async () => {
+    await fetch(`${SERVER_URL}/quizzes/${quizId}/start`, { method: 'POST' })
+  }, [quizId])
+
+  const handleTimeExpired = useCallback(async (questionId: string) => {
+    if (advancedRef.current === questionId) return
+    advancedRef.current = questionId
+    await fetch(`${SERVER_URL}/quizzes/${quizId}/next-question`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fromQuestionId: questionId }),
+    }).catch(() => {/* server auto-guard handles concurrent calls */})
+  }, [quizId])
+
   const handleSubmitAnswer = useCallback((questionId: string, answer: string) => {
     if (!socketRef.current || selectedAnswer !== null) return
     setSelectedAnswer(answer)
@@ -106,7 +125,14 @@ export default function App() {
     case 'join':
       return <JoinPage onJoin={handleJoin} error={joinError} />
     case 'waiting':
-      return <WaitingRoom title={quizTitle} username={username} count={participantCount} />
+      return (
+        <WaitingRoom
+          title={quizTitle}
+          username={username}
+          count={participantCount}
+          onStart={handleStartQuiz}
+        />
+      )
     case 'playing':
       return (
         <PlayView
@@ -117,6 +143,7 @@ export default function App() {
           myScore={myScore}
           username={username}
           onSubmit={handleSubmitAnswer}
+          onTimeExpired={handleTimeExpired}
         />
       )
     case 'ended':

@@ -10,7 +10,9 @@ export interface Question {
   id: string;
   text: string;
   options: string[];
-  timeLimit: number;
+  timeLimitSec: number;
+  questionNumber: number;
+  totalQuestions: number;
 }
 
 export interface AnswerResult {

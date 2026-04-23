@@ -10,6 +10,7 @@ interface Props {
   myScore: number
   username: string
   onSubmit: (questionId: string, answer: string) => void
+  onTimeExpired: (questionId: string) => void
 }
 
 export default function PlayView({
@@ -20,9 +21,14 @@ export default function PlayView({
   myScore,
   username,
   onSubmit,
+  onTimeExpired,
 }: Props) {
-  const remaining = useTimer(question.timeLimit, question.id)
-  const pct = (remaining / question.timeLimit) * 100
+  const remaining = useTimer(
+    question.timeLimitSec,
+    question.id,
+    () => onTimeExpired(question.id),
+  )
+  const pct = (remaining / question.timeLimitSec) * 100
   const timerClass = pct < 20 ? 'danger' : pct < 40 ? 'warning' : ''
 
   const optionClass = (option: string) => {
@@ -49,7 +55,9 @@ export default function PlayView({
 
       {/* header */}
       <div className="play-header">
-        <div className="play-header-left">Question</div>
+        <div className="play-header-left">
+          Q{question.questionNumber}/{question.totalQuestions}
+        </div>
 
         <div className="timer-display">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">

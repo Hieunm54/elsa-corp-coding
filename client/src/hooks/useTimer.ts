@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
-export function useTimer(duration: number, resetKey: unknown): number {
+export function useTimer(duration: number, resetKey: unknown, onExpire?: () => void): number {
   const [remaining, setRemaining] = useState(duration)
+  const onExpireRef = useRef(onExpire)
+  onExpireRef.current = onExpire
 
   useEffect(() => {
     setRemaining(duration)
@@ -12,7 +14,10 @@ export function useTimer(duration: number, resetKey: unknown): number {
       const elapsed = (Date.now() - start) / 1000
       const r = Math.max(0, duration - elapsed)
       setRemaining(r)
-      if (r <= 0) clearInterval(id)
+      if (r <= 0) {
+        clearInterval(id)
+        onExpireRef.current?.()
+      }
     }, 100)
 
     return () => clearInterval(id)
