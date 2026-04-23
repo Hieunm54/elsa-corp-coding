@@ -14,11 +14,18 @@ vi.mock("../services/quiz", () => ({
   }),
   startQuiz: vi.fn(async (quizId: string) => {
     if (quizId !== "quiz-001") throw new Error("Quiz not found");
-    return { id: "q1", text: "Q?", options: ["A", "B"], timeLimitSec: 30, questionNumber: 1, totalQuestions: 5 };
+    return {
+      status: "question" as const,
+      payload: { id: "q1", text: "Q?", options: ["A", "B"], timeLimitSec: 30, questionNumber: 1, totalQuestions: 5 },
+    };
   }),
-  nextQuestion: vi.fn(async (quizId: string) => {
+  nextQuestion: vi.fn(async (quizId: string, fromQuestionId: string) => {
     if (quizId !== "quiz-001") throw new Error("Quiz not found");
-    return { id: "q2", text: "Q2?", options: ["A", "B"], timeLimitSec: 30, questionNumber: 2, totalQuestions: 5 };
+    if (fromQuestionId !== "q1") return { status: "already_advanced" as const };
+    return {
+      status: "question" as const,
+      payload: { id: "q2", text: "Q2?", options: ["A", "B"], timeLimitSec: 30, questionNumber: 2, totalQuestions: 5 },
+    };
   }),
 }));
 
@@ -79,7 +86,6 @@ describe("POST /quizzes/:quizId/start", () => {
   it("returns 200 with first question and broadcasts to room", async () => {
     const res = await request(app).post("/quizzes/quiz-001/start");
     expect(res.status).toBe(200);
-    expect(res.body.started).toBe(true);
     expect(res.body.question.questionNumber).toBe(1);
     expect(mockTo).toHaveBeenCalledWith("quizzes:quiz-001");
     expect(mockEmit).toHaveBeenCalledWith("question", expect.objectContaining({ id: "q1" }));
@@ -92,15 +98,34 @@ describe("POST /quizzes/:quizId/start", () => {
 });
 
 describe("POST /quizzes/:quizId/next-question", () => {
+  it("returns 400 when fromQuestionId is missing", async () => {
+    const res = await request(app).post("/quizzes/quiz-001/next-question").send({});
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty("error");
+  });
+
   it("returns 200 with next question and broadcasts to room", async () => {
-    const res = await request(app).post("/quizzes/quiz-001/next-question");
+    const res = await request(app)
+      .post("/quizzes/quiz-001/next-question")
+      .send({ fromQuestionId: "q1" });
     expect(res.status).toBe(200);
+    expect(res.body.status).toBe("question");
     expect(res.body.question.questionNumber).toBe(2);
     expect(mockEmit).toHaveBeenCalledWith("question", expect.objectContaining({ id: "q2" }));
   });
 
+  it("returns 200 with already_advanced when question already moved on", async () => {
+    const res = await request(app)
+      .post("/quizzes/quiz-001/next-question")
+      .send({ fromQuestionId: "q-stale" });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("already_advanced");
+  });
+
   it("returns 404 for unknown quiz", async () => {
-    const res = await request(app).post("/quizzes/quiz-999/next-question");
+    const res = await request(app)
+      .post("/quizzes/quiz-999/next-question")
+      .send({ fromQuestionId: "q1" });
     expect(res.status).toBe(404);
   });
 });

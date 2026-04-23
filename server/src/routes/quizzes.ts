@@ -47,9 +47,9 @@ router.post("/:quizId/join", async (req: Request, res: Response) => {
 
 router.post("/:quizId/start", async (req: Request, res: Response) => {
   try {
-    const question = await startQuiz(req.params.quizId);
-    getIo().to(`quizzes:${req.params.quizId}`).emit("question", question);
-    res.json({ started: true, question });
+    const result = await startQuiz(req.params.quizId);
+    getIo().to(`quizzes:${req.params.quizId}`).emit("question", result.payload);
+    res.json({ question: result.payload });
   } catch (err) {
     if (err instanceof Error && err.message === "Quiz not found") {
       res.status(404).json({ error: err.message });
@@ -64,20 +64,37 @@ router.post("/:quizId/start", async (req: Request, res: Response) => {
 });
 
 router.post("/:quizId/next-question", async (req: Request, res: Response) => {
+  const { fromQuestionId } = req.body as { fromQuestionId?: string };
+
+  if (!fromQuestionId) {
+    res.status(400).json({ error: "fromQuestionId is required" });
+    return;
+  }
+
   try {
-    const question = await nextQuestion(req.params.quizId);
-    getIo().to(`quizzes:${req.params.quizId}`).emit("question", question);
-    res.json({ question });
+    const result = await nextQuestion(req.params.quizId, fromQuestionId);
+    const io = getIo();
+    const room = `quizzes:${req.params.quizId}`;
+
+    if (result.status === "already_advanced") {
+      res.json({ status: "already_advanced" });
+      return;
+    }
+
+    if (result.status === "ended") {
+      io.to(room).emit("quiz_ended", { finalLeaderboard: result.finalLeaderboard });
+      res.json({ status: "ended" });
+      return;
+    }
+
+    io.to(room).emit("question", result.payload);
+    res.json({ status: "question", question: result.payload });
   } catch (err) {
     if (err instanceof Error && err.message === "Quiz not found") {
       res.status(404).json({ error: err.message });
       return;
     }
     if (err instanceof Error && err.message === "Quiz not started") {
-      res.status(400).json({ error: err.message });
-      return;
-    }
-    if (err instanceof Error && err.message === "No more questions") {
       res.status(400).json({ error: err.message });
       return;
     }

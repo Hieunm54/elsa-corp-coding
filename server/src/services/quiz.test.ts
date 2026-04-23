@@ -5,6 +5,8 @@ vi.mock("../redis/client", () => ({
     set: vi.fn().mockResolvedValue("OK"),
     hset: vi.fn().mockResolvedValue(1),
     hget: vi.fn(),
+    zrevrange: vi.fn().mockResolvedValue([]),
+    hgetall: vi.fn().mockResolvedValue({}),
   },
 }));
 
@@ -40,10 +42,10 @@ describe("startQuiz", () => {
 
   it("returns first question payload", async () => {
     const result = await startQuiz("quiz-001");
-    expect(result.questionNumber).toBe(1);
-    expect(result.totalQuestions).toBe(5);
-    expect(result.id).toBe("q1");
-    expect(result).not.toHaveProperty("correctAnswer");
+    expect(result.payload.questionNumber).toBe(1);
+    expect(result.payload.totalQuestions).toBe(5);
+    expect(result.payload.id).toBe("q1");
+    expect(result.payload).not.toHaveProperty("correctAnswer");
   });
 
   it("writes questionStartedAt and state to Redis", async () => {
@@ -67,20 +69,33 @@ describe("startQuiz", () => {
 describe("nextQuestion", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("returns next question payload", async () => {
+  it("returns next question payload when on the expected question", async () => {
     vi.mocked(redis.hget).mockResolvedValue("0");
-    const result = await nextQuestion("quiz-001");
-    expect(result.questionNumber).toBe(2);
-    expect(result.id).toBe("q2");
+    const result = await nextQuestion("quiz-001", "q1");
+    expect(result.status).toBe("question");
+    if (result.status === "question") {
+      expect(result.payload.questionNumber).toBe(2);
+      expect(result.payload.id).toBe("q2");
+    }
+  });
+
+  it("returns already_advanced when fromQuestionId does not match current", async () => {
+    vi.mocked(redis.hget).mockResolvedValue("1"); // currently on q2
+    const result = await nextQuestion("quiz-001", "q1"); // claiming to be on q1
+    expect(result.status).toBe("already_advanced");
+  });
+
+  it("returns ended with leaderboard on the last question", async () => {
+    vi.mocked(redis.hget).mockResolvedValue("4"); // last index
+    const result = await nextQuestion("quiz-001", "q5");
+    expect(result.status).toBe("ended");
+    if (result.status === "ended") {
+      expect(Array.isArray(result.finalLeaderboard)).toBe(true);
+    }
   });
 
   it("throws when quiz not started", async () => {
     vi.mocked(redis.hget).mockResolvedValue(null);
-    await expect(nextQuestion("quiz-001")).rejects.toThrow("Quiz not started");
-  });
-
-  it("throws when no more questions", async () => {
-    vi.mocked(redis.hget).mockResolvedValue("4"); // last question index
-    await expect(nextQuestion("quiz-001")).rejects.toThrow("No more questions");
+    await expect(nextQuestion("quiz-001", "q1")).rejects.toThrow("Quiz not started");
   });
 });

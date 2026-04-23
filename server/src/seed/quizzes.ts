@@ -13,7 +13,7 @@ export const quizzes: Quiz[] = [
         correctAnswer: "Short-lived",
         basePoints: 100,
         bonusPoints: 50,
-        timeLimitSec: 30,
+        timeLimitSec: 15,
         orderNum: 1,
       },
       {
@@ -23,7 +23,7 @@ export const quizzes: Quiz[] = [
         correctAnswer: "Exacerbate",
         basePoints: 100,
         bonusPoints: 50,
-        timeLimitSec: 30,
+        timeLimitSec: 15,
         orderNum: 2,
       },
       {
@@ -33,7 +33,7 @@ export const quizzes: Quiz[] = [
         correctAnswer: "Using too many words",
         basePoints: 100,
         bonusPoints: 50,
-        timeLimitSec: 30,
+        timeLimitSec: 15,
         orderNum: 3,
       },
       {
@@ -43,7 +43,7 @@ export const quizzes: Quiz[] = [
         correctAnswer: "Ubiquitous",
         basePoints: 100,
         bonusPoints: 50,
-        timeLimitSec: 30,
+        timeLimitSec: 15,
         orderNum: 4,
       },
       {
@@ -53,7 +53,7 @@ export const quizzes: Quiz[] = [
         correctAnswer: "Well-meaning",
         basePoints: 100,
         bonusPoints: 50,
-        timeLimitSec: 30,
+        timeLimitSec: 15,
         orderNum: 5,
       },
     ],
