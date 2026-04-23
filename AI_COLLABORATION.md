@@ -58,13 +58,7 @@ I validated this against the race scenario: the first caller's `fromQuestionId` 
 
 ### Test suite (`server/src/**/*.test.ts`)
 
-Claude wrote all unit and integration tests. Two bugs surfaced during this process:
-
-- **`quiz_ended` timer test** — the test was calling `vi.advanceTimersByTimeAsync` without first calling `startQuiz`, so no timer was ever scheduled. Fixed by restructuring the test: call `startQuiz` first, chain `mockResolvedValueOnce` for each `hget` call in sequence, then advance timers in a loop
-
-- **Missing `markDirty` and `ZADD NX 0` in `nextQuestion`** — after refactoring auto-advance to be client-driven, the `handleQuestionTimeout` function (which had contained `ZADD NX 0` for unanswered participants and `markDirty`) was removed
-
-I identified that unanswered participants would no longer appear in the leaderboard and the leaderboard broadcast wouldn't fire on question transitions. Claude added both back into `nextQuestion` and added a test to verify (`zadd` called with `NX` flag for each participant, `markDirty` called with the quiz ID)
+Claude wrote all unit tests
 
 ---
 
