@@ -111,6 +111,23 @@ export default function App() {
     }).catch(() => {/* server auto-guard handles concurrent calls */})
   }, [quizId])
 
+  const handlePlayAgain = useCallback(() => {
+    socketRef.current?.disconnect()
+    socketRef.current = null
+    setScreen('join')
+    setQuizId('')
+    setQuizTitle('')
+    setUsername('')
+    setParticipantCount(1)
+    setCurrentQuestion(null)
+    setSelectedAnswer(null)
+    setAnswerResult(null)
+    setLeaderboard([])
+    setMyScore(0)
+    setJoinError('')
+    advancedRef.current = null
+  }, [])
+
   const handleSubmitAnswer = useCallback((questionId: string, answer: string) => {
     if (!socketRef.current || selectedAnswer !== null) return
     setSelectedAnswer(answer)
@@ -147,6 +164,6 @@ export default function App() {
         />
       )
     case 'ended':
-      return <EndedView leaderboard={leaderboard} username={username} />
+      return <EndedView leaderboard={leaderboard} username={username} onPlayAgain={handlePlayAgain} />
   }
 }

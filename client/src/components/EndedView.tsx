@@ -5,9 +5,10 @@ const RANK_EMOJI = ['🥇', '🥈', '🥉']
 interface Props {
   leaderboard: LeaderboardEntry[]
   username: string
+  onPlayAgain: () => void
 }
 
-export default function EndedView({ leaderboard, username }: Props) {
+export default function EndedView({ leaderboard, username, onPlayAgain }: Props) {
   const myEntry = leaderboard.find((e) => e.username === username)
 
   return (
@@ -24,6 +25,10 @@ export default function EndedView({ leaderboard, username }: Props) {
             </p>
           )}
         </div>
+
+        <button className="btn btn-primary" style={{ marginTop: 24 }} onClick={onPlayAgain}>
+          Join Another Quiz
+        </button>
 
         <div className="final-lb">
           <div className="final-lb-header">
